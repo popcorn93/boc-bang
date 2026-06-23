@@ -20,7 +20,8 @@ import { SUPPORTED_AUDIO_TYPES, MAX_FILE_SIZE_MB } from './constants';
 import { 
   auth, 
   db, 
-  googleProvider, 
+  googleLoginProvider,
+  googleDocsProvider,
   GoogleAuthProvider,
   signInWithPopup, 
   signInWithRedirect,
@@ -41,6 +42,7 @@ import {
 
 type AuthView = 'login' | 'register';
 type AppView = 'upload' | 'editor' | 'history' | 'admin';
+const GOOGLE_REDIRECT_PENDING_KEY = 'boc-bang-google-redirect-pending';
 
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
@@ -72,6 +74,8 @@ const App: React.FC = () => {
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        window.sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
+        setIsGoogleLoginLoading(false);
         setIsLoggedIn(true);
         setCurrentUser(user);
         
@@ -169,11 +173,24 @@ const App: React.FC = () => {
   useEffect(() => {
     getRedirectResult(auth)
       .then((result) => {
-        if (!result) return;
+        const hadPendingRedirect = window.sessionStorage.getItem(GOOGLE_REDIRECT_PENDING_KEY) === '1';
+        window.sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
+        setIsGoogleLoginLoading(false);
+        if (!result) {
+          if (!auth.currentUser && hadPendingRedirect) {
+            openModal(
+              "Đăng Nhập Google Chưa Hoàn Tất",
+              "Google đã trả về ứng dụng nhưng Firebase chưa khôi phục được phiên đăng nhập. Vui lòng thử lại; nếu vẫn gặp lỗi, cần cấu hình Firebase Authentication cho domain boc-bang.onrender.com."
+            );
+          }
+          return;
+        }
         const credential = GoogleAuthProvider.credentialFromResult(result);
         setGoogleAccessToken(credential?.accessToken || null);
       })
       .catch((error) => {
+        window.sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
+        setIsGoogleLoginLoading(false);
         console.error("Google redirect login error:", error);
         openModal("Đăng Nhập Thất Bại", getGoogleAuthErrorMessage(error));
       });
@@ -353,7 +370,7 @@ const App: React.FC = () => {
       
       // If no token or potentially expired, try to get a new one
       if (!token) {
-        const result = await signInWithPopup(auth, googleProvider);
+        const result = await signInWithPopup(auth, googleDocsProvider);
         const credential = GoogleAuthProvider.credentialFromResult(result);
         token = credential?.accessToken || null;
         setGoogleAccessToken(token);
@@ -422,12 +439,21 @@ const App: React.FC = () => {
   const handleGoogleLogin = async () => {
     setIsGoogleLoginLoading(true);
     try {
-      await signInWithRedirect(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleLoginProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      setGoogleAccessToken(credential?.accessToken || null);
     } catch (error) {
       console.error("Google login error:", error);
-      openModal("Đăng Nhập Thất Bại", getGoogleAuthErrorMessage(error));
+      const code = (error as any)?.code || '';
+      if (code.includes('popup-blocked') || code.includes('popup-closed-by-user') || code.includes('cancelled-popup-request')) {
+        window.sessionStorage.setItem(GOOGLE_REDIRECT_PENDING_KEY, '1');
+        await signInWithRedirect(auth, googleLoginProvider);
+        return;
+      }
+      const message = getGoogleAuthErrorMessage(error);
+      openModal("Đăng Nhập Thất Bại", message);
       setIsGoogleLoginLoading(false);
-      throw new Error(getGoogleAuthErrorMessage(error));
+      throw new Error(message);
     }
   };
 
