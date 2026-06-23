@@ -1,0 +1,7 @@
+{
+  "name": "Bóc Băng",
+  "description": "Ứng dụng phiên âm thanh thông minh, tự động phát hiện ngôn ngữ (Tiếng Việt/Tiếng Anh), chuyển đổi âm thanh thành văn bản, hỗ trợ nhận diện người nói, và cho phép người dùng quản lý và tải về các bản ghi của họ.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"],
+  "prompt": ""
+}

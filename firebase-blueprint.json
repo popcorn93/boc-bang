@@ -1,0 +1,46 @@
+
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Information about the user including their Bpoint balance.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "bpoints": { "type": "number", "description": "Current Bpoint balance" },
+        "totalTranscriptions": { "type": "number", "description": "Total transcriptions performed" },
+        "isUnlimited": { "type": "boolean", "description": "Flag for unlimited usage" },
+        "isAdmin": { "type": "boolean", "description": "Flag for admin privileges" }
+      },
+      "required": ["uid", "email", "bpoints"]
+    },
+    "TranscriptionRecord": {
+      "title": "Transcription Record",
+      "description": "A record of a transcription process, including the audio metadata and the AI-generated text.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique ID of the record" },
+        "userId": { "type": "string", "description": "The UID of the user who owns this record" },
+        "fileName": { "type": "string", "description": "Name of the original audio file" },
+        "date": { "type": "string", "format": "date-time", "description": "When the transcription was created" },
+        "transcript": { "type": "string", "description": "The raw transcribed text" },
+        "language": { "type": "string", "description": "Detected language of the audio" },
+        "structuredTranscript": { "type": "string", "description": "The AI-optimized version of the transcript" },
+        "durationMinutes": { "type": "number", "description": "Duration of audio in minutes" },
+        "bpointsConsumed": { "type": "number", "description": "Cost of transcription in Bpoints" }
+      },
+      "required": ["id", "userId", "fileName", "date", "transcript"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles and balances."
+    },
+    "/transcriptions/{recordId}": {
+      "schema": "TranscriptionRecord",
+      "description": "Collection of transcription records."
+    }
+  }
+}

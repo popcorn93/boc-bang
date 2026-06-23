@@ -1,0 +1,106 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: transcriptions
+    // Document ID: {recordId}
+    // Fields:
+    //   - id: string (required) - Unique ID
+    //   - userId: string (required) - Owner UID
+    //   - fileName: string (required) - Original file name
+    //   - date: timestamp (required) - Creation date
+    //   - transcript: string (required) - Transcribed text
+    //   - language: string (optional) - Detected language
+    //   - structuredTranscript: string (optional) - AI-optimized text
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true || 
+         request.auth.token.email == 'hoangnm9x@gmail.com');
+    }
+
+    function isValidTranscription(data) {
+      return data.keys().hasAll(['id', 'userId', 'fileName', 'date', 'transcript']) &&
+             data.keys().hasOnly(['id', 'userId', 'fileName', 'date', 'transcript', 'language', 'structuredTranscript', 'durationMinutes', 'bpointsConsumed']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.userId is string && (data.userId == request.auth.uid || isAdmin()) &&
+             data.fileName is string && data.fileName.size() > 0 && data.fileName.size() < 255 &&
+             data.transcript is string && data.transcript.size() >= 0 && data.transcript.size() < 1048576 &&
+             (!('language' in data) || (data.language is string && data.language.size() < 50)) &&
+             (!('structuredTranscript' in data) || (data.structuredTranscript is string || data.structuredTranscript == null)) &&
+             (!('durationMinutes' in data) || (data.durationMinutes is number)) &&
+             (!('bpointsConsumed' in data) || (data.bpointsConsumed is number));
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'bpoints']) &&
+             data.keys().hasOnly(['uid', 'email', 'bpoints', 'totalTranscriptions', 'isUnlimited', 'isAdmin']) &&
+             data.uid == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             data.bpoints is number &&
+             data.bpoints >= 0 &&
+             (!('isUnlimited' in data) || data.isUnlimited is bool) &&
+             (!('isAdmin' in data) || data.isAdmin is bool) &&
+             (!('totalTranscriptions' in data) || data.totalTranscriptions is number);
+    }
+    
+    function isValidAdminUpdate(data) {
+      return data.keys().hasAll(['uid', 'email', 'bpoints']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.keys().hasOnly(['uid', 'email', 'bpoints', 'totalTranscriptions', 'isUnlimited', 'isAdmin']) &&
+             data.bpoints is number &&
+             data.bpoints >= 0 &&
+             (!('totalTranscriptions' in data) || data.totalTranscriptions is number) &&
+             (!('isUnlimited' in data) || data.isUnlimited is bool) &&
+             (!('isAdmin' in data) || data.isAdmin is bool);
+    }
+
+    match /transcriptions/{recordId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    match /paymentRequests/{requestId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    match /users/{userId} {
+      allow list: if isAdmin();
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUserProfile(request.resource.data) && 
+                      (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == false);
+      allow update: if (isOwner(userId) && isValidUserProfile(request.resource.data) && 
+                        request.resource.data.email == resource.data.email &&
+                        request.resource.data.bpoints <= resource.data.bpoints &&
+                        (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == resource.data.isAdmin) &&
+                        (!('isUnlimited' in request.resource.data) || request.resource.data.isUnlimited == resource.data.isUnlimited)) || 
+                      (isAdmin() && isValidAdminUpdate(request.resource.data));
+      allow delete: if false;
+    }
+  }
+}

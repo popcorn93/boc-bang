@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bốc Băng</string>
+    <string name="title_activity_main">Bốc Băng</string>
+    <string name="package_name">com.bocbang.app</string>
+    <string name="custom_url_scheme">com.bocbang.app</string>
+</resources>
