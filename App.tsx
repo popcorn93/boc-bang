@@ -23,6 +23,8 @@ import {
   googleProvider, 
   GoogleAuthProvider,
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   signOut, 
   onAuthStateChanged, 
   createUserWithEmailAndPassword,
@@ -145,6 +147,36 @@ const App: React.FC = () => {
   const closeModal = () => {
     setIsModalOpen(false);
   };
+
+  const getGoogleAuthErrorMessage = (error: any) => {
+    const code = error?.code || '';
+    if (code.includes('unauthorized-domain')) {
+      return 'Tên miền hiện tại chưa được thêm vào Firebase Authentication > Authorized domains.';
+    }
+    if (code.includes('popup-blocked') || code.includes('popup-closed-by-user')) {
+      return 'Trình duyệt đã chặn hoặc đóng cửa sổ đăng nhập Google. Vui lòng thử lại.';
+    }
+    if (code.includes('operation-not-allowed')) {
+      return 'Google Sign-In chưa được bật trong Firebase Authentication.';
+    }
+    if (code.includes('cancelled-popup-request')) {
+      return 'Yêu cầu đăng nhập Google trước đó đã bị hủy. Vui lòng thử lại.';
+    }
+    return 'Không thể đăng nhập bằng Google. Vui lòng thử lại.';
+  };
+
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then((result) => {
+        if (!result) return;
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        setGoogleAccessToken(credential?.accessToken || null);
+      })
+      .catch((error) => {
+        console.error("Google redirect login error:", error);
+        openModal("Đăng Nhập Thất Bại", getGoogleAuthErrorMessage(error));
+      });
+  }, [openModal]);
 
   const handleFileSelect = async (file: File) => {
     if (!SUPPORTED_AUDIO_TYPES.includes(file.type)) {
@@ -388,12 +420,10 @@ const App: React.FC = () => {
 
   const handleGoogleLogin = async () => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      setGoogleAccessToken(credential?.accessToken || null);
+      await signInWithRedirect(auth, googleProvider);
     } catch (error) {
       console.error("Google login error:", error);
-      openModal("Đăng Nhập Thất Bại", "Không thể đăng nhập bằng Google. Vui lòng thử lại.");
+      openModal("Đăng Nhập Thất Bại", getGoogleAuthErrorMessage(error));
     }
   };
 
