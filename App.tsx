@@ -62,6 +62,7 @@ const App: React.FC = () => {
   const [currentLanguage, setCurrentLanguage] = useState<string | undefined>(undefined);
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
   const [isSavingToGoogleDocs, setIsSavingToGoogleDocs] = useState<boolean>(false);
+  const [isGoogleLoginLoading, setIsGoogleLoginLoading] = useState<boolean>(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isBpointsModalOpen, setIsBpointsModalOpen] = useState<boolean>(false);
   const [currentAudioDuration, setCurrentAudioDuration] = useState<number>(0);
@@ -419,11 +420,14 @@ const App: React.FC = () => {
   };
 
   const handleGoogleLogin = async () => {
+    setIsGoogleLoginLoading(true);
     try {
       await signInWithRedirect(auth, googleProvider);
     } catch (error) {
       console.error("Google login error:", error);
       openModal("Đăng Nhập Thất Bại", getGoogleAuthErrorMessage(error));
+      setIsGoogleLoginLoading(false);
+      throw new Error(getGoogleAuthErrorMessage(error));
     }
   };
 
@@ -560,7 +564,14 @@ const App: React.FC = () => {
 
   if (!isLoggedIn) {
     if (authView === 'login') {
-        return <Login onEmailLogin={handleEmailLogin} onGoogleLogin={handleGoogleLogin} onSwitchToRegister={() => setAuthView('register')} />;
+        return (
+          <Login
+            onEmailLogin={handleEmailLogin}
+            onGoogleLogin={handleGoogleLogin}
+            onSwitchToRegister={() => setAuthView('register')}
+            isGoogleLoginLoading={isGoogleLoginLoading}
+          />
+        );
     }
     if (authView === 'register') {
         return <Register onRegister={handleRegister} onSwitchToLogin={() => setAuthView('login')} />;

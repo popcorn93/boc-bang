@@ -3,11 +3,12 @@ import React, { useState } from 'react';
 
 interface LoginProps {
   onEmailLogin: (email: string, password: string) => Promise<void>;
-  onGoogleLogin: () => void;
+  onGoogleLogin: () => Promise<void>;
   onSwitchToRegister: () => void;
+  isGoogleLoginLoading?: boolean;
 }
 
-export const Login: React.FC<LoginProps> = ({ onEmailLogin, onGoogleLogin, onSwitchToRegister }) => {
+export const Login: React.FC<LoginProps> = ({ onEmailLogin, onGoogleLogin, onSwitchToRegister, isGoogleLoginLoading = false }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -28,8 +29,14 @@ export const Login: React.FC<LoginProps> = ({ onEmailLogin, onGoogleLogin, onSwi
     }
   };
   
-  const handleGoogleLogin = () => {
-    onGoogleLogin();
+  const handleGoogleLogin = async () => {
+    setError('');
+    try {
+      await onGoogleLogin();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Không thể đăng nhập bằng Google. Vui lòng thử lại.';
+      setError(message);
+    }
   };
 
   return (
@@ -83,7 +90,7 @@ export const Login: React.FC<LoginProps> = ({ onEmailLogin, onGoogleLogin, onSwi
             <div className="space-y-4 pt-2">
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isGoogleLoginLoading}
                 className="w-full py-4 bg-primary hover:bg-primary/90 text-white font-black rounded-lg shadow-lg shadow-primary/20 transition-all hover:scale-[1.02]"
               >
                 {isSubmitting ? 'Đang đăng nhập...' : 'Tiếp tục'}
@@ -91,10 +98,12 @@ export const Login: React.FC<LoginProps> = ({ onEmailLogin, onGoogleLogin, onSwi
               <button
                 type="button"
                 onClick={handleGoogleLogin}
-                className="w-full flex items-center justify-center py-4 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+                disabled={isSubmitting || isGoogleLoginLoading}
+                data-testid="google-login-button"
+                className="w-full flex items-center justify-center py-4 border border-slate-200 dark:border-slate-700 rounded-lg font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all disabled:cursor-wait disabled:opacity-70"
               >
                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5 mr-3" alt="Google" />
-                Đăng nhập với Google
+                {isGoogleLoginLoading ? 'Đang chuyển tới Google...' : 'Đăng nhập với Google'}
               </button>
             </div>
           </form>
