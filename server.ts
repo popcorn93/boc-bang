@@ -520,8 +520,16 @@ ${transcript}
     }
   });
 
+  app.get("/api/payments/payos-webhook", (_req, res) => {
+    return res.json({ success: true });
+  });
+
   app.post("/api/payments/payos-webhook", async (req, res) => {
     try {
+      if (!req.body?.data || !req.body?.signature) {
+        return res.json({ success: true });
+      }
+
       const payos = createPayOSClient();
       const webhookData = await payos.webhooks.verify(req.body);
       const db = getAdminDb();
