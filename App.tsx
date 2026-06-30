@@ -580,12 +580,12 @@ const App: React.FC = () => {
     ));
   };
 
-  const handlePaymentSubmitted = async (points: number, price: number, packageId: string, transferNote: string) => {
-    await createPaymentRequest(points, price, packageId, transferNote);
-    openModal(
-      "Đã Gửi Yêu Cầu Xác Nhận",
-      `Yêu cầu nạp ${points} Bpoint (${price.toLocaleString('vi-VN')}đ) đã được ghi nhận. Bpoint sẽ được cộng sau khi giao dịch được xác nhận.`
-    );
+  const handlePaymentSubmitted = async (packageId: string) => {
+    const paymentRequest = await createPaymentRequest(packageId);
+    if (!paymentRequest.checkoutUrl) {
+      throw new Error('Không nhận được liên kết thanh toán payOS.');
+    }
+    window.location.href = paymentRequest.checkoutUrl;
   };
 
   if (!isLoggedIn) {
@@ -903,7 +903,6 @@ const App: React.FC = () => {
 
       {isBpointsModalOpen && (
         <BpointsModal 
-          userEmail={currentUser?.email || ''} 
           onClose={() => setIsBpointsModalOpen(false)}
           onPaymentSubmitted={handlePaymentSubmitted}
         />

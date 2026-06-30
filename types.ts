@@ -10,7 +10,7 @@ export interface UserProfile {
   isAdmin?: boolean;
 }
 
-export type PaymentRequestStatus = 'pending' | 'approved' | 'rejected';
+export type PaymentRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired';
 
 export interface PaymentRequest {
   id: string;
@@ -20,6 +20,11 @@ export interface PaymentRequest {
   price: number;
   packageId?: string;
   transferNote?: string;
+  provider?: 'payos' | 'manual';
+  payosOrderCode?: number;
+  payosPaymentLinkId?: string;
+  checkoutUrl?: string;
+  qrCode?: string;
   status: PaymentRequestStatus;
   createdAt?: any;
   updatedAt?: any;

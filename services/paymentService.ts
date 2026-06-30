@@ -10,10 +10,7 @@ const getAuthToken = async () => {
 };
 
 export const createPaymentRequest = async (
-  points: number,
-  price: number,
-  packageId: string,
-  transferNote: string
+  packageId: string
 ): Promise<PaymentRequest> => {
   const token = await getAuthToken();
   const response = await fetch('/api/payment-requests', {
@@ -22,7 +19,7 @@ export const createPaymentRequest = async (
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
-    body: JSON.stringify({ points, price, packageId, transferNote }),
+    body: JSON.stringify({ packageId }),
   });
 
   const data = await response.json();

@@ -27,6 +27,18 @@ View your app in AI Studio: https://ai.studio/apps/19e5cc85-69b4-47c6-90ff-138b0
    VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
    VITE_FIREBASE_APP_ID=your_web_app_id
    VITE_FIREBASE_DATABASE_ID=your_firestore_database_id
+   PAYOS_CLIENT_ID=your_payos_client_id
+   PAYOS_API_KEY=your_payos_api_key
+   PAYOS_CHECKSUM_KEY=your_payos_checksum_key
+   PUBLIC_APP_URL=https://boc-bang.onrender.com
    ```
 3. Run the app:
    `npm run dev`
+
+## payOS webhook
+
+Configure this webhook URL in payOS:
+
+```text
+https://boc-bang.onrender.com/api/payments/payos-webhook
+```

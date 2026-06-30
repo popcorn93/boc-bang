@@ -18,12 +18,11 @@ const PACKAGES: BpointPackage[] = [
 ];
 
 interface BpointsModalProps {
-  userEmail: string;
   onClose: () => void;
-  onPaymentSubmitted: (points: number, price: number, packageId: string, transferNote: string) => Promise<void>;
+  onPaymentSubmitted: (packageId: string) => Promise<void>;
 }
 
-export const BpointsModal: React.FC<BpointsModalProps> = ({ userEmail, onClose, onPaymentSubmitted }) => {
+export const BpointsModal: React.FC<BpointsModalProps> = ({ onClose, onPaymentSubmitted }) => {
   const [selectedPackage, setSelectedPackage] = useState<BpointPackage | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState('');
@@ -32,19 +31,12 @@ export const BpointsModal: React.FC<BpointsModalProps> = ({ userEmail, onClose, 
     ? Math.floor(selectedPackage.points * (1 + selectedPackage.bonusPercent / 100))
     : 0;
 
-  const qrUrl = selectedPackage 
-    ? `https://img.vietqr.io/image/vcb-9982086341-compact2.png?amount=${selectedPackage.price}&addInfo=NAP%20${totalPoints}%20BPOINT%20${userEmail.split('@')[0]}&accountName=Ngo%20Minh%20Hoang`
-    : '';
-
-  const transferNote = selectedPackage ? `NAP ${totalPoints} BPOINT ${userEmail.split('@')[0]}` : '';
-
   const handleSubmitPaymentRequest = async () => {
     if (!selectedPackage) return;
     setError('');
     setIsVerifying(true);
     try {
-      await onPaymentSubmitted(totalPoints, selectedPackage.price, selectedPackage.id, transferNote);
-      onClose();
+      await onPaymentSubmitted(selectedPackage.id);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Không thể gửi yêu cầu xác nhận.';
       setError(message);
@@ -104,19 +96,16 @@ export const BpointsModal: React.FC<BpointsModalProps> = ({ userEmail, onClose, 
           {selectedPackage ? (
             <div className="w-full space-y-4 flex flex-col items-center">
               <div className="text-center">
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Quét mã VietQR để thanh toán</p>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Thanh toán tự động qua payOS</p>
                 <p className="text-2xl font-black text-primary">{selectedPackage.price.toLocaleString('vi-VN')}đ</p>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl shadow-lg border-4 border-primary/20">
-                <img src={qrUrl} alt="VietQR Payment" className="w-48 h-48 object-contain" />
+              <div className="bg-white p-5 rounded-2xl shadow-lg border-4 border-primary/20">
+                <span className="material-symbols-outlined text-primary text-7xl">qr_code_scanner</span>
               </div>
 
               <div className="text-center text-xs text-slate-500 max-w-[200px]">
-                Nội dung chuyển khoản: <br />
-                <span className="font-bold text-slate-900 dark:text-slate-100 select-all">
-                  {transferNote}
-                </span>
+                Bạn sẽ được chuyển sang trang thanh toán bảo mật của payOS. Bpoint được cộng tự động khi giao dịch thành công.
               </div>
 
               {error && (
@@ -133,12 +122,12 @@ export const BpointsModal: React.FC<BpointsModalProps> = ({ userEmail, onClose, 
                 {isVerifying ? (
                   <>
                     <span className="material-symbols-outlined animate-spin">sync</span>
-                    Đang gửi...
+                    Đang tạo thanh toán...
                   </>
                 ) : (
                   <>
-                    <span className="material-symbols-outlined">verified</span>
-                    Gửi yêu cầu xác nhận
+                    <span className="material-symbols-outlined">payments</span>
+                    Thanh toán qua payOS
                   </>
                 )}
               </button>

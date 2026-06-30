@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import { PayOS } from "@payos/node";
 import { applicationDefault, cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
@@ -44,6 +45,27 @@ interface AuthenticatedRequest extends express.Request {
   };
 }
 
+const BPOINT_PACKAGES = new Map([
+  ["p10", { points: 10, bonusPercent: 0, price: 3000 }],
+  ["p20", { points: 20, bonusPercent: 0, price: 6000 }],
+  ["p50", { points: 50, bonusPercent: 5, price: 15000 }],
+  ["p100", { points: 100, bonusPercent: 10, price: 30000 }],
+  ["p200", { points: 200, bonusPercent: 15, price: 60000 }],
+  ["p500", { points: 500, bonusPercent: 15, price: 150000 }],
+]);
+
+const getPackageTotalPoints = (packageId: string) => {
+  const pkg = BPOINT_PACKAGES.get(packageId);
+  if (!pkg) {
+    throw new Error("Gói nạp không hợp lệ.");
+  }
+
+  return {
+    ...pkg,
+    totalPoints: Math.floor(pkg.points * (1 + pkg.bonusPercent / 100)),
+  };
+};
+
 const getAdminApp = () => {
   if (getApps().length > 0) {
     return getApps()[0];
@@ -74,6 +96,33 @@ const getAdminApp = () => {
 
 const getAdminDb = () => getFirestore(getAdminApp(), firebaseConfig.firestoreDatabaseId);
 const getAdminAuth = () => getAuth(getAdminApp());
+
+const getPublicBaseUrl = (req: express.Request) => {
+  const configuredUrl = process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL;
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/$/, "");
+  }
+
+  const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http").split(",")[0].trim();
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  return `${proto}://${host}`.replace(/\/$/, "");
+};
+
+const createPayOSClient = () => {
+  const clientId = process.env.PAYOS_CLIENT_ID;
+  const apiKey = process.env.PAYOS_API_KEY;
+  const checksumKey = process.env.PAYOS_CHECKSUM_KEY;
+
+  if (!clientId || !apiKey || !checksumKey) {
+    throw new Error("Thanh toán tự động yêu cầu cấu hình PAYOS_CLIENT_ID, PAYOS_API_KEY và PAYOS_CHECKSUM_KEY.");
+  }
+
+  return new PayOS({
+    clientId,
+    apiKey,
+    checksumKey,
+  });
+};
 
 const getBearerToken = (req: express.Request) => {
   const header = req.headers.authorization || "";
@@ -409,27 +458,49 @@ ${transcript}
 
   app.post("/api/payment-requests", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { points, price, packageId, transferNote } = req.body;
+      const { packageId } = req.body;
       if (!req.user) {
         return res.status(401).json({ error: "Vui lòng đăng nhập để tiếp tục." });
       }
 
-      const parsedPoints = Number(points);
-      const parsedPrice = Number(price);
-      if (!Number.isInteger(parsedPoints) || parsedPoints <= 0 || !Number.isInteger(parsedPrice) || parsedPrice <= 0) {
-        return res.status(400).json({ error: "Gói nạp không hợp lệ." });
-      }
-
+      const selectedPackage = getPackageTotalPoints(String(packageId || ""));
       const db = getAdminDb();
-      const requestRef = db.collection("paymentRequests").doc();
+      const payos = createPayOSClient();
+      const orderCode = Date.now();
+      const requestRef = db.collection("paymentRequests").doc(String(orderCode));
+      const baseUrl = getPublicBaseUrl(req);
+      const description = `BOCBANG${orderCode.toString().slice(-8)}`;
+
+      const paymentLink = await payos.paymentRequests.create({
+        orderCode,
+        amount: selectedPackage.price,
+        description,
+        returnUrl: `${baseUrl}/?payment=success&orderCode=${orderCode}`,
+        cancelUrl: `${baseUrl}/?payment=cancel&orderCode=${orderCode}`,
+        buyerEmail: req.user.email || undefined,
+        items: [
+          {
+            name: `${selectedPackage.totalPoints} Bpoint`,
+            quantity: 1,
+            price: selectedPackage.price,
+          },
+        ],
+        expiredAt: Math.floor(Date.now() / 1000) + 30 * 60,
+      });
+
       const paymentRequest = {
         id: requestRef.id,
         userId: req.user.uid,
         email: req.user.email || "",
-        points: parsedPoints,
-        price: parsedPrice,
+        points: selectedPackage.totalPoints,
+        price: selectedPackage.price,
         packageId: String(packageId || ""),
-        transferNote: String(transferNote || ""),
+        provider: "payos",
+        transferNote: description,
+        payosOrderCode: orderCode,
+        payosPaymentLinkId: paymentLink.paymentLinkId,
+        checkoutUrl: paymentLink.checkoutUrl,
+        qrCode: paymentLink.qrCode,
         status: "pending",
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -446,6 +517,95 @@ ${transcript}
     } catch (error: any) {
       console.error("Lỗi tạo yêu cầu nạp Bpoint:", error);
       return res.status(500).json({ error: error?.message || "Không thể tạo yêu cầu nạp Bpoint." });
+    }
+  });
+
+  app.post("/api/payments/payos-webhook", async (req, res) => {
+    try {
+      const payos = createPayOSClient();
+      const webhookData = await payos.webhooks.verify(req.body);
+      const db = getAdminDb();
+      const orderCode = Number(webhookData.orderCode);
+      const amount = Number(webhookData.amount);
+      const requestRef = db.collection("paymentRequests").doc(String(orderCode));
+
+      if (orderCode === 123 && webhookData.description === "VQRIO123") {
+        return res.json({ success: true });
+      }
+
+      await db.runTransaction(async (transaction) => {
+        const requestSnap = await transaction.get(requestRef);
+        if (!requestSnap.exists) {
+          throw new Error(`Không tìm thấy đơn thanh toán payOS ${orderCode}.`);
+        }
+
+        const paymentRequest = requestSnap.data();
+        if (paymentRequest?.provider !== "payos") {
+          throw new Error("Đơn thanh toán không thuộc payOS.");
+        }
+        if (Number(paymentRequest?.price) !== amount) {
+          transaction.update(requestRef, {
+            status: "rejected",
+            rejectedBy: "payos",
+            rejectedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            rejectionReason: `Số tiền payOS không khớp: ${amount}`,
+            payosWebhookData: webhookData,
+          });
+          return;
+        }
+        if (paymentRequest?.payosPaymentLinkId && paymentRequest.payosPaymentLinkId !== webhookData.paymentLinkId) {
+          transaction.update(requestRef, {
+            status: "rejected",
+            rejectedBy: "payos",
+            rejectedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            rejectionReason: "Mã paymentLinkId không khớp.",
+            payosWebhookData: webhookData,
+          });
+          return;
+        }
+        if (paymentRequest?.status === "approved") {
+          transaction.update(requestRef, {
+            updatedAt: FieldValue.serverTimestamp(),
+            payosWebhookData: webhookData,
+          });
+          return;
+        }
+        if (paymentRequest?.status !== "pending") {
+          throw new Error("Đơn thanh toán đã được xử lý.");
+        }
+        if (webhookData.code !== "00") {
+          transaction.update(requestRef, {
+            status: "rejected",
+            rejectedBy: "payos",
+            rejectedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            rejectionReason: webhookData.desc || "payOS báo giao dịch không thành công.",
+            payosWebhookData: webhookData,
+          });
+          return;
+        }
+
+        const userRef = db.collection("users").doc(paymentRequest.userId);
+        transaction.update(userRef, {
+          bpoints: FieldValue.increment(Number(paymentRequest.points || 0)),
+        });
+        transaction.update(requestRef, {
+          status: "approved",
+          approvedBy: "payos",
+          approvedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          payosReference: webhookData.reference,
+          payosTransactionDateTime: webhookData.transactionDateTime,
+          payosWebhookData: webhookData,
+        });
+      });
+
+      return res.json({ success: true });
+    } catch (error: any) {
+      console.error("Lỗi xử lý webhook payOS:", error);
+      return res.status(400).json({ success: false, error: error?.message || "Webhook payOS không hợp lệ." });
     }
   });
 
