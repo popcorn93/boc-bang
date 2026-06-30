@@ -544,7 +544,8 @@ ${transcript}
       await db.runTransaction(async (transaction) => {
         const requestSnap = await transaction.get(requestRef);
         if (!requestSnap.exists) {
-          throw new Error(`Không tìm thấy đơn thanh toán payOS ${orderCode}.`);
+          console.warn(`Bỏ qua webhook payOS không khớp đơn nội bộ: ${orderCode}`);
+          return;
         }
 
         const paymentRequest = requestSnap.data();
