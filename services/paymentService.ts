@@ -30,6 +30,22 @@ export const createPaymentRequest = async (
   return data.paymentRequest;
 };
 
+export const listPaymentRequests = async (): Promise<PaymentRequest[]> => {
+  const token = await getAuthToken();
+  const response = await fetch('/api/admin/payment-requests', {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Không thể tải danh sách yêu cầu nạp.');
+  }
+
+  return data.paymentRequests;
+};
+
 export const approvePaymentRequest = async (
   requestId: string,
   proof?: { bankReference?: string; evidenceNote?: string }

@@ -124,6 +124,21 @@ const createPayOSClient = () => {
   });
 };
 
+const serializeFirestoreData = (data: Record<string, any> | undefined) => {
+  if (!data) {
+    return data;
+  }
+
+  return Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [
+      key,
+      value && typeof value === "object" && typeof (value as any).toDate === "function"
+        ? (value as any).toDate().toISOString()
+        : value,
+    ]),
+  );
+};
+
 const getBearerToken = (req: express.Request) => {
   const header = req.headers.authorization || "";
   const [scheme, token] = header.split(" ");
@@ -635,6 +650,26 @@ ${transcript}
     } catch (error: any) {
       console.error("Lỗi xử lý webhook payOS:", error);
       return res.status(400).json({ success: false, error: error?.message || "Webhook payOS không hợp lệ." });
+    }
+  });
+
+  app.get("/api/admin/payment-requests", requireAuth, requireAdmin, async (_req: AuthenticatedRequest, res) => {
+    try {
+      const snapshot = await getAdminDb()
+        .collection("paymentRequests")
+        .orderBy("createdAt", "desc")
+        .limit(100)
+        .get();
+
+      const paymentRequests = snapshot.docs.map((docSnap) => ({
+        ...serializeFirestoreData(docSnap.data()),
+        id: docSnap.id,
+      }));
+
+      return res.json({ paymentRequests });
+    } catch (error: any) {
+      console.error("Lỗi tải danh sách yêu cầu nạp:", error);
+      return res.status(500).json({ error: error?.message || "Không thể tải danh sách yêu cầu nạp." });
     }
   });
 

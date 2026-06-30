@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { collection, doc, updateDoc, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { approvePaymentRequest, reconcilePaymentRequest, rejectPaymentRequest } from '../services/paymentService';
+import { approvePaymentRequest, listPaymentRequests, reconcilePaymentRequest, rejectPaymentRequest } from '../services/paymentService';
 import type { PaymentRequest, UserProfile } from '../types';
 
 interface AdminDashboardProps {
@@ -50,25 +50,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    const requestsRef = collection(db, 'paymentRequests');
-    const q = query(requestsRef, orderBy('createdAt', 'desc'));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const requestList = snapshot.docs.map((docSnap) => ({
-        ...docSnap.data(),
-        id: docSnap.id,
-      })) as PaymentRequest[];
-
+  const loadPaymentRequests = useCallback(async () => {
+    setPaymentsLoading(true);
+    try {
+      const requestList = await listPaymentRequests();
       setPaymentRequests(requestList);
-      setPaymentsLoading(false);
-    }, (error) => {
+    } catch (error) {
       console.error("Error loading payment requests:", error);
+      alert(error instanceof Error ? error.message : "Không thể tải danh sách yêu cầu nạp.");
+    } finally {
       setPaymentsLoading(false);
-    });
-
-    return () => unsubscribe();
+    }
   }, []);
+
+  useEffect(() => {
+    void loadPaymentRequests();
+  }, [loadPaymentRequests]);
 
   const handleAdjustBpoints = async (userId: string, currentPoints: number, amount: number) => {
     try {
@@ -119,6 +116,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
       }
 
       await approvePaymentRequest(requestId, { bankReference, evidenceNote });
+      await loadPaymentRequests();
     } catch (error) {
       console.error("Error approving payment:", error);
       alert(error instanceof Error ? error.message : "Lỗi khi duyệt yêu cầu nạp.");
@@ -130,6 +128,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
       const request = await reconcilePaymentRequest(requestId);
       const paid = Number(request.payosAmountPaid || 0).toLocaleString('vi-VN');
       alert(`Đã đối soát payOS. Trạng thái: ${request.payosStatus || request.status}. Đã thanh toán: ${paid}đ.`);
+      await loadPaymentRequests();
     } catch (error) {
       console.error("Error reconciling payment:", error);
       alert(error instanceof Error ? error.message : "Lỗi khi đối soát payOS.");
@@ -139,6 +138,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
   const handleRejectPayment = async (requestId: string) => {
     try {
       await rejectPaymentRequest(requestId);
+      await loadPaymentRequests();
     } catch (error) {
       console.error("Error rejecting payment:", error);
       alert(error instanceof Error ? error.message : "Lỗi khi từ chối yêu cầu nạp.");
