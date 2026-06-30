@@ -469,7 +469,7 @@ ${transcript}
       const orderCode = Date.now();
       const requestRef = db.collection("paymentRequests").doc(String(orderCode));
       const baseUrl = getPublicBaseUrl(req);
-      const description = `BOCBANG${orderCode.toString().slice(-8)}`;
+      const description = `BB${orderCode.toString().slice(-7)}`;
 
       const paymentLink = await payos.paymentRequests.create({
         orderCode,
@@ -530,9 +530,17 @@ ${transcript}
         return res.json({ success: true });
       }
 
+      const db = getAdminDb();
+      const rawOrderCode = Number(req.body?.data?.orderCode);
+      if (Number.isFinite(rawOrderCode)) {
+        const requestSnap = await db.collection("paymentRequests").doc(String(rawOrderCode)).get();
+        if (!requestSnap.exists) {
+          return res.json({ success: true });
+        }
+      }
+
       const payos = createPayOSClient();
       const webhookData = await payos.webhooks.verify(req.body);
-      const db = getAdminDb();
       const orderCode = Number(webhookData.orderCode);
       const amount = Number(webhookData.amount);
       const requestRef = db.collection("paymentRequests").doc(String(orderCode));
