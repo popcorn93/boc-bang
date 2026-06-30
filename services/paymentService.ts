@@ -30,9 +30,29 @@ export const createPaymentRequest = async (
   return data.paymentRequest;
 };
 
-export const approvePaymentRequest = async (requestId: string): Promise<void> => {
+export const approvePaymentRequest = async (
+  requestId: string,
+  proof?: { bankReference?: string; evidenceNote?: string }
+): Promise<void> => {
   const token = await getAuthToken();
   const response = await fetch(`/api/admin/payment-requests/${requestId}/approve`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(proof || {}),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Không thể duyệt yêu cầu nạp.');
+  }
+};
+
+export const reconcilePaymentRequest = async (requestId: string): Promise<PaymentRequest> => {
+  const token = await getAuthToken();
+  const response = await fetch(`/api/admin/payment-requests/${requestId}/reconcile`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -41,8 +61,10 @@ export const approvePaymentRequest = async (requestId: string): Promise<void> =>
 
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.error || 'Không thể duyệt yêu cầu nạp.');
+    throw new Error(data.error || 'Không thể đối soát giao dịch payOS.');
   }
+
+  return data.paymentRequest;
 };
 
 export const rejectPaymentRequest = async (requestId: string, reason = ''): Promise<void> => {

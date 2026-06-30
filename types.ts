@@ -23,8 +23,17 @@ export interface PaymentRequest {
   provider?: 'payos' | 'manual';
   payosOrderCode?: number;
   payosPaymentLinkId?: string;
+  payosStatus?: string;
+  payosAmountPaid?: number;
+  payosAmountRemaining?: number;
+  payosReference?: string;
+  payosTransactionDateTime?: string;
   checkoutUrl?: string;
   qrCode?: string;
+  manualBankReference?: string;
+  manualEvidenceNote?: string;
+  manualApprovedAt?: any;
+  manualApprovedBy?: string;
   status: PaymentRequestStatus;
   createdAt?: any;
   updatedAt?: any;

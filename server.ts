@@ -617,6 +617,18 @@ ${transcript}
           payosTransactionDateTime: webhookData.transactionDateTime,
           payosWebhookData: webhookData,
         });
+        transaction.set(db.collection("paymentAuditLogs").doc(), {
+          paymentRequestId: requestRef.id,
+          action: "auto_approved_webhook",
+          actor: "payos",
+          userId: paymentRequest.userId,
+          points: Number(paymentRequest.points || 0),
+          price: Number(paymentRequest.price || 0),
+          payosOrderCode: orderCode,
+          payosPaymentLinkId: webhookData.paymentLinkId,
+          payosReference: webhookData.reference,
+          createdAt: FieldValue.serverTimestamp(),
+        });
       });
 
       return res.json({ success: true });
@@ -626,11 +638,108 @@ ${transcript}
     }
   });
 
+  app.post("/api/admin/payment-requests/:id/reconcile", requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
+    try {
+      const db = getAdminDb();
+      const requestId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const requestRef = db.collection("paymentRequests").doc(requestId);
+      const requestSnap = await requestRef.get();
+      if (!requestSnap.exists) {
+        return res.status(404).json({ error: "Không tìm thấy yêu cầu nạp." });
+      }
+
+      const paymentRequest = requestSnap.data();
+      if (paymentRequest?.provider !== "payos" || !paymentRequest?.payosOrderCode) {
+        return res.status(400).json({ error: "Yêu cầu này không có mã payOS để đối soát." });
+      }
+
+      const payos = createPayOSClient();
+      const paymentLink = await payos.paymentRequests.get(Number(paymentRequest.payosOrderCode));
+      const firstTransaction = paymentLink.transactions?.[0];
+      const updateData = {
+        payosStatus: paymentLink.status,
+        payosAmountPaid: Number(paymentLink.amountPaid || 0),
+        payosAmountRemaining: Number(paymentLink.amountRemaining || 0),
+        payosTransactions: paymentLink.transactions || [],
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      if (paymentLink.status !== "PAID" || Number(paymentLink.amountPaid || 0) < Number(paymentRequest.price || 0)) {
+        await requestRef.update(updateData);
+        await db.collection("paymentAuditLogs").add({
+          paymentRequestId: requestRef.id,
+          action: "reconciled_pending",
+          actor: req.user?.uid,
+          payosStatus: paymentLink.status,
+          payosAmountPaid: Number(paymentLink.amountPaid || 0),
+          payosAmountRemaining: Number(paymentLink.amountRemaining || 0),
+          createdAt: FieldValue.serverTimestamp(),
+        });
+
+        const refreshed = (await requestRef.get()).data();
+        return res.json({
+          ok: true,
+          paymentRequest: { ...refreshed, id: requestRef.id },
+          message: `payOS vẫn báo ${paymentLink.status}, đã thanh toán ${Number(paymentLink.amountPaid || 0).toLocaleString("vi-VN")}đ.`,
+        });
+      }
+
+      await db.runTransaction(async (transaction) => {
+        const freshSnap = await transaction.get(requestRef);
+        if (!freshSnap.exists) {
+          throw new Error("Không tìm thấy yêu cầu nạp.");
+        }
+
+        const freshPaymentRequest = freshSnap.data();
+        if (freshPaymentRequest?.status === "approved") {
+          transaction.update(requestRef, updateData);
+          return;
+        }
+        if (freshPaymentRequest?.status !== "pending") {
+          throw new Error("Yêu cầu này đã được xử lý.");
+        }
+
+        const userRef = db.collection("users").doc(freshPaymentRequest.userId);
+        transaction.update(userRef, {
+          bpoints: FieldValue.increment(Number(freshPaymentRequest.points || 0)),
+        });
+        transaction.update(requestRef, {
+          ...updateData,
+          status: "approved",
+          approvedBy: "payos_reconcile",
+          approvedAt: FieldValue.serverTimestamp(),
+          payosReference: firstTransaction?.reference || null,
+          payosTransactionDateTime: firstTransaction?.transactionDateTime || null,
+        });
+        transaction.set(db.collection("paymentAuditLogs").doc(), {
+          paymentRequestId: requestRef.id,
+          action: "auto_approved_reconcile",
+          actor: req.user?.uid,
+          userId: freshPaymentRequest.userId,
+          points: Number(freshPaymentRequest.points || 0),
+          price: Number(freshPaymentRequest.price || 0),
+          payosStatus: paymentLink.status,
+          payosAmountPaid: Number(paymentLink.amountPaid || 0),
+          payosReference: firstTransaction?.reference || null,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      });
+
+      const refreshed = (await requestRef.get()).data();
+      return res.json({ ok: true, paymentRequest: { ...refreshed, id: requestRef.id } });
+    } catch (error: any) {
+      console.error("Lỗi đối soát payOS:", error);
+      return res.status(500).json({ error: error?.message || "Không thể đối soát giao dịch payOS." });
+    }
+  });
+
   app.post("/api/admin/payment-requests/:id/approve", requireAuth, requireAdmin, async (req: AuthenticatedRequest, res) => {
     try {
       const db = getAdminDb();
       const requestId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const requestRef = db.collection("paymentRequests").doc(requestId);
+      const bankReference = String(req.body?.bankReference || "").trim();
+      const evidenceNote = String(req.body?.evidenceNote || "").trim();
 
       await db.runTransaction(async (transaction) => {
         const requestSnap = await transaction.get(requestRef);
@@ -642,6 +751,9 @@ ${transcript}
         if (paymentRequest?.status !== "pending") {
           throw new Error("Yêu cầu này đã được xử lý.");
         }
+        if (paymentRequest?.provider === "payos" && (!bankReference || !evidenceNote)) {
+          throw new Error("Duyệt thủ công yêu cầu mã tham chiếu ngân hàng và ghi chú/link chứng từ.");
+        }
 
         const userRef = db.collection("users").doc(paymentRequest.userId);
         transaction.update(userRef, {
@@ -652,6 +764,23 @@ ${transcript}
           approvedBy: req.user?.uid,
           approvedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
+          manualBankReference: bankReference || null,
+          manualEvidenceNote: evidenceNote || null,
+          manualApprovedBy: req.user?.uid,
+          manualApprovedAt: FieldValue.serverTimestamp(),
+        });
+        transaction.set(db.collection("paymentAuditLogs").doc(), {
+          paymentRequestId: requestRef.id,
+          action: "manual_approved",
+          actor: req.user?.uid,
+          userId: paymentRequest.userId,
+          points: Number(paymentRequest.points || 0),
+          price: Number(paymentRequest.price || 0),
+          bankReference: bankReference || null,
+          evidenceNote: evidenceNote || null,
+          previousStatus: paymentRequest.status,
+          provider: paymentRequest.provider || "manual",
+          createdAt: FieldValue.serverTimestamp(),
         });
       });
 
@@ -685,6 +814,15 @@ ${transcript}
           rejectedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
           rejectionReason: String(req.body?.reason || ""),
+        });
+        transaction.set(db.collection("paymentAuditLogs").doc(), {
+          paymentRequestId: requestRef.id,
+          action: "rejected",
+          actor: req.user?.uid,
+          userId: paymentRequest.userId,
+          reason: String(req.body?.reason || ""),
+          provider: paymentRequest.provider || "manual",
+          createdAt: FieldValue.serverTimestamp(),
         });
       });
 

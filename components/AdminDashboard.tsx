@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, doc, updateDoc, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { approvePaymentRequest, rejectPaymentRequest } from '../services/paymentService';
+import { approvePaymentRequest, reconcilePaymentRequest, rejectPaymentRequest } from '../services/paymentService';
 import type { PaymentRequest, UserProfile } from '../types';
 
 interface AdminDashboardProps {
@@ -108,10 +108,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
   const handleApprovePayment = async (requestId: string) => {
     try {
-      await approvePaymentRequest(requestId);
+      const bankReference = window.prompt('Nhập mã tham chiếu giao dịch ngân hàng:')?.trim();
+      if (!bankReference) {
+        return;
+      }
+
+      const evidenceNote = window.prompt('Nhập link ảnh xác nhận hoặc ghi chú chứng từ:')?.trim();
+      if (!evidenceNote) {
+        return;
+      }
+
+      await approvePaymentRequest(requestId, { bankReference, evidenceNote });
     } catch (error) {
       console.error("Error approving payment:", error);
       alert(error instanceof Error ? error.message : "Lỗi khi duyệt yêu cầu nạp.");
+    }
+  };
+
+  const handleReconcilePayment = async (requestId: string) => {
+    try {
+      const request = await reconcilePaymentRequest(requestId);
+      const paid = Number(request.payosAmountPaid || 0).toLocaleString('vi-VN');
+      alert(`Đã đối soát payOS. Trạng thái: ${request.payosStatus || request.status}. Đã thanh toán: ${paid}đ.`);
+    } catch (error) {
+      console.error("Error reconciling payment:", error);
+      alert(error instanceof Error ? error.message : "Lỗi khi đối soát payOS.");
     }
   };
 
@@ -222,7 +243,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                         <td className="px-6 py-4 font-black text-primary">{request.points.toLocaleString()}</td>
                         <td className="px-6 py-4 font-bold">{request.price.toLocaleString('vi-VN')}đ</td>
                         <td className="px-6 py-4">
-                          <span className="font-mono text-xs text-slate-500">{request.transferNote || '-'}</span>
+                          <div className="flex flex-col gap-1">
+                            <span className="font-mono text-xs text-slate-500">{request.transferNote || '-'}</span>
+                            {request.provider === 'payos' && (
+                              <span className="text-[10px] text-slate-400">
+                                payOS: {request.payosStatus || 'Chưa đối soát'} · Đã trả {(request.payosAmountPaid || 0).toLocaleString('vi-VN')}đ
+                              </span>
+                            )}
+                            {request.manualBankReference && (
+                              <span className="text-[10px] text-amber-600">
+                                Duyệt tay: {request.manualBankReference}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-center">
                           <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
@@ -238,6 +271,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                         <td className="px-6 py-4 text-right">
                           {request.status === 'pending' ? (
                             <div className="flex items-center justify-end gap-2">
+                              {request.provider === 'payos' && (
+                                <button
+                                  onClick={() => handleReconcilePayment(request.id)}
+                                  className="px-3 py-1.5 rounded-lg border border-blue-100 text-blue-600 hover:bg-blue-50 text-xs font-bold"
+                                >
+                                  Đối soát
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleRejectPayment(request.id)}
                                 className="px-3 py-1.5 rounded-lg border border-red-100 text-red-600 hover:bg-red-50 text-xs font-bold"
@@ -248,7 +289,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                 onClick={() => handleApprovePayment(request.id)}
                                 className="px-3 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 text-xs font-bold"
                               >
-                                Duyệt
+                                Duyệt tay
                               </button>
                             </div>
                           ) : (
