@@ -162,8 +162,15 @@ const App: React.FC = () => {
 
   const getGoogleAuthErrorMessage = (error: any) => {
     const code = error?.code || '';
+    const message = error?.message || '';
     if (code.includes('unauthorized-domain')) {
       return 'Tên miền hiện tại chưa được thêm vào Firebase Authentication > Authorized domains.';
+    }
+    if (code.includes('invalid-api-key')) {
+      return 'Firebase API key không hợp lệ. Cần kiểm tra lại cấu hình Firebase client.';
+    }
+    if (code.includes('auth-domain-config-required') || message.includes('authDomain')) {
+      return 'Thiếu hoặc sai authDomain trong cấu hình Firebase Authentication.';
     }
     if (code.includes('popup-blocked') || code.includes('popup-closed-by-user')) {
       return 'Trình duyệt đã chặn hoặc đóng cửa sổ đăng nhập Google. Vui lòng thử lại.';
@@ -174,7 +181,7 @@ const App: React.FC = () => {
     if (code.includes('cancelled-popup-request')) {
       return 'Yêu cầu đăng nhập Google trước đó đã bị hủy. Vui lòng thử lại.';
     }
-    return 'Không thể đăng nhập bằng Google. Vui lòng thử lại.';
+    return code ? `Không thể đăng nhập bằng Google (${code}). Vui lòng thử lại.` : 'Không thể đăng nhập bằng Google. Vui lòng thử lại.';
   };
 
   useEffect(() => {
@@ -446,6 +453,13 @@ const App: React.FC = () => {
   const handleGoogleLogin = async () => {
     setIsGoogleLoginLoading(true);
     try {
+      const shouldUseRedirectFirst = window.matchMedia('(max-width: 768px)').matches;
+      if (shouldUseRedirectFirst) {
+        window.sessionStorage.setItem(GOOGLE_REDIRECT_PENDING_KEY, '1');
+        await signInWithRedirect(auth, googleLoginProvider);
+        return;
+      }
+
       const result = await signInWithPopup(auth, googleLoginProvider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       setGoogleAccessToken(credential?.accessToken || null);
