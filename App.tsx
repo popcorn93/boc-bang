@@ -68,6 +68,13 @@ const App: React.FC = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isBpointsModalOpen, setIsBpointsModalOpen] = useState<boolean>(false);
   const [currentAudioDuration, setCurrentAudioDuration] = useState<number>(0);
+  const isAdminUser = !!userProfile?.isAdmin || currentUser?.email === 'hoangnm9x@gmail.com';
+  const mobileViewTitle: Record<AppView, string> = {
+    upload: 'Bóc Băng',
+    editor: currentFileNameForDisplay || 'Biên tập',
+    history: 'Lịch sử',
+    admin: 'Quản trị',
+  };
 
   useEffect(() => {
     let unsubscribeProfile: (() => void) | null = null;
@@ -635,7 +642,7 @@ const App: React.FC = () => {
               <span className={`material-symbols-outlined ${appView === 'history' ? 'fill-icon' : ''}`}>history</span>
               <span className="text-sm font-medium">Lịch sử</span>
             </button>
-            {(userProfile?.isAdmin || currentUser?.email === 'hoangnm9x@gmail.com') && (
+            {isAdminUser && (
               <button 
                 onClick={() => setAppView('admin')}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${appView === 'admin' ? 'bg-primary text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-primary/5'}`}
@@ -693,11 +700,21 @@ const App: React.FC = () => {
                 <span className="material-symbols-outlined">arrow_back</span>
               </button>
             )}
-            <h1 className="text-lg font-bold text-primary">Bóc Băng</h1>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold text-primary">{mobileViewTitle[appView]}</h1>
+              {appView === 'upload' && (
+                <p className="text-[11px] font-semibold text-primary/60">AI Transcription</p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="flex items-center justify-center p-2 rounded-lg hover:bg-primary/10 text-primary">
-              <span className="material-symbols-outlined">settings</span>
+            <button
+              onClick={() => setIsBpointsModalOpen(true)}
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 text-primary"
+              aria-label="Nạp Bpoint"
+            >
+              <span className="material-symbols-outlined text-[18px] fill-icon text-yellow-500">token</span>
+              <span className="text-xs font-black">{userProfile?.isUnlimited ? '∞' : (userProfile?.bpoints || 0)}</span>
             </button>
             <button 
               onClick={handleViewProfile}
@@ -733,7 +750,7 @@ const App: React.FC = () => {
           </header>
         )}
 
-        <div className="max-w-5xl mx-auto px-4 lg:px-8 py-6 lg:py-10 w-full flex-grow">
+        <div className={`${appView === 'admin' ? 'max-w-6xl' : 'max-w-5xl'} mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-10 w-full flex-grow`}>
           {appView === 'upload' && (
             <AudioUpload 
               onFileSelect={handleFileSelect} 
@@ -817,7 +834,7 @@ const App: React.FC = () => {
             />
           )}
 
-          {appView === 'admin' && (userProfile?.isAdmin || currentUser?.email === 'hoangnm9x@gmail.com') && (
+          {appView === 'admin' && isAdminUser && (
             <AdminDashboard onClose={() => setAppView('upload')} />
           )}
         </div>
@@ -875,22 +892,31 @@ const App: React.FC = () => {
 
       {/* Mobile Bottom Navigation (Only in Upload/History) */}
       {appView !== 'editor' && (
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-background-dark border-t border-primary/10 flex justify-around items-center py-3 pb-6 z-50">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-background-dark border-t border-primary/10 grid auto-cols-fr grid-flow-col items-center gap-1 px-2 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] z-50">
           <button 
             onClick={() => setAppView('upload')}
-            className={`flex flex-col items-center gap-1 ${appView === 'upload' ? 'text-primary' : 'text-slate-400'}`}
+            className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl ${appView === 'upload' ? 'bg-primary/10 text-primary' : 'text-slate-400'}`}
           >
             <span className={`material-symbols-outlined ${appView === 'upload' ? 'fill-icon' : ''}`}>add_circle</span>
             <span className="text-[10px] font-bold uppercase tracking-wider">Mới</span>
           </button>
           <button 
             onClick={() => setAppView('history')}
-            className={`flex flex-col items-center gap-1 ${appView === 'history' ? 'text-primary' : 'text-slate-400'}`}
+            className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl ${appView === 'history' ? 'bg-primary/10 text-primary' : 'text-slate-400'}`}
           >
             <span className={`material-symbols-outlined ${appView === 'history' ? 'fill-icon' : ''}`}>history</span>
             <span className="text-[10px] font-bold uppercase tracking-wider">Lịch sử</span>
           </button>
-          <button className="flex flex-col items-center gap-1 text-slate-400">
+          {isAdminUser && (
+            <button 
+              onClick={() => setAppView('admin')}
+              className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl ${appView === 'admin' ? 'bg-primary/10 text-primary' : 'text-slate-400'}`}
+            >
+              <span className={`material-symbols-outlined ${appView === 'admin' ? 'fill-icon' : ''}`}>admin_panel_settings</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider">Quản trị</span>
+            </button>
+          )}
+          <button className="flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-slate-400">
             <span className="material-symbols-outlined">library_music</span>
             <span className="text-[10px] font-bold uppercase tracking-wider">Thư viện</span>
           </button>
