@@ -172,6 +172,9 @@ const App: React.FC = () => {
     if (code.includes('auth-domain-config-required') || message.includes('authDomain')) {
       return 'Thiếu hoặc sai authDomain trong cấu hình Firebase Authentication.';
     }
+    if (code.includes('requests-to-this-api') || message.includes('Identity Toolkit') || message.includes('identitytoolkit')) {
+      return 'Google Cloud đang chặn Firebase API key gọi Identity Toolkit API. Cần mở quyền Identity Toolkit API cho API key của Firebase.';
+    }
     if (code.includes('popup-blocked') || code.includes('popup-closed-by-user')) {
       return 'Trình duyệt đã chặn hoặc đóng cửa sổ đăng nhập Google. Vui lòng thử lại.';
     }
