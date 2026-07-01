@@ -269,7 +269,7 @@ Tuyệt đối không đưa ra bất kỳ lời bình luận, giải thích hay 
       };
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: { parts: [audioPart, textPart] },
         config: {
           safetySettings: [
@@ -404,7 +404,7 @@ ${transcript}
 `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
         config: {
           safetySettings: [
