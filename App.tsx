@@ -456,20 +456,18 @@ const App: React.FC = () => {
   const handleGoogleLogin = async () => {
     setIsGoogleLoginLoading(true);
     try {
-      const shouldUseRedirectFirst = window.matchMedia('(max-width: 768px)').matches;
-      if (shouldUseRedirectFirst) {
-        window.sessionStorage.setItem(GOOGLE_REDIRECT_PENDING_KEY, '1');
-        await signInWithRedirect(auth, googleLoginProvider);
-        return;
-      }
-
       const result = await signInWithPopup(auth, googleLoginProvider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       setGoogleAccessToken(credential?.accessToken || null);
     } catch (error) {
       console.error("Google login error:", error);
       const code = (error as any)?.code || '';
-      if (code.includes('popup-blocked') || code.includes('popup-closed-by-user') || code.includes('cancelled-popup-request')) {
+      if (
+        code.includes('popup-blocked') ||
+        code.includes('popup-closed-by-user') ||
+        code.includes('cancelled-popup-request') ||
+        code.includes('operation-not-supported-in-this-environment')
+      ) {
         window.sessionStorage.setItem(GOOGLE_REDIRECT_PENDING_KEY, '1');
         await signInWithRedirect(auth, googleLoginProvider);
         return;
